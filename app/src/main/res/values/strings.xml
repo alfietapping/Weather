@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">Weather</string>
+
+    <string-array name="popularCities">
+        <item>London, GB</item>
+        <item>Wroclaw, PL</item>
+        <item>New York, US</item>
+        <item>Berlin, DE</item>
+        <item>Lisbon, PT</item>
+        <item>Madrid, ES</item>
+        <item>Rome, IT</item>
+        <item>Paris, FR</item>
+        <item>Tokyo, JP</item>
+        <item>Delhi, IN</item>
+        <item>Beijing, CN</item>
+        <item>Cairo, EG</item>
+        <item>San Paulo, BR</item>
+        <item>Mexico City, MX</item>
+    </string-array>
+
+</resources>
