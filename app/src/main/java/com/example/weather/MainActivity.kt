@@ -9,7 +9,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import kotlinx.android.synthetic.main.activity_main.*
-import kotlinx.serialization.builtins.ListSerializer
+import org.jetbrains.anko.doAsync
+import org.jetbrains.anko.uiThread
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
@@ -21,25 +22,54 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 
+
 class MainActivity : AppCompatActivity() {
+
+    private var citiesFromAsync: List<String>? = null
 
     private val popularCities: Lazy<List<String>> = lazy {
         resources.getStringArray(R.array.popularCities).toList()
     }
 
-    private val cityStringList: Lazy<List<String>> = lazy {
-        readJson().map {
-            it.cityName + ", " + it.countryCode
+    private fun doAsync() {
+        doAsync {
+
+            val db = CityDatabase.getDatabase(this@MainActivity)
+
+            val cities = CityRepository(db.cityDao()).allCities().map {
+                it.cityName + ", " + it.countryCode
+            }
+
+
+            // this is to let database be seeded before async runs on first install
+            if(cities.isEmpty()) {
+                Thread.sleep(1000)
+                doAsync()
+            }
+
+            uiThread {
+              citiesFromAsync = cities
+            }
         }
     }
+
+
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        getWeather("London, GB")
+        doAsync()
 
-        locationTv.setOnClickListener{displayCities()}
+        locationTv.setOnClickListener {
+
+            citiesFromAsync?.let {
+                displayCities(it)
+            }
+        }
+
+        getWeather("London, GB")
 
     }
 
@@ -55,13 +85,16 @@ class MainActivity : AppCompatActivity() {
 
 
         val response: Call<JsonResponse?>? =
-            jsonApi.getJsonResponse(selectedLocation,
-                "c88de9aca4ef112f59e127f756e80f10")
+            jsonApi.getJsonResponse(
+                selectedLocation,
+                "c88de9aca4ef112f59e127f756e80f10"
+            )
 
         response?.enqueue(object : Callback<JsonResponse?> {
 
             override fun onResponse(
-                call: Call<JsonResponse?>, response: Response<JsonResponse?>) {
+                call: Call<JsonResponse?>, response: Response<JsonResponse?>
+            ) {
                 Log.d("onResponse", "called")
 
                 if (!response.isSuccessful) {
@@ -70,16 +103,16 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     Log.d("onResponse", "successful")
 
-                    val jsonResponse  = response.body()
+                    val jsonResponse = response.body()
 
                     jsonResponse?.let {
 
-                        val locationName     = jsonResponse.locationName
-                        val secondsOffset    = jsonResponse.secondsOffsetFromUtc
-                        val temperature      = jsonResponse.temperature.temperatureInKelvin
+                        val locationName = jsonResponse.locationName
+                        val secondsOffset = jsonResponse.secondsOffsetFromUtc
+                        val temperature = jsonResponse.temperature.temperatureInKelvin
                         val weatherCondition = jsonResponse.weather[0].weatherCondition
 
-                        locationTv.text      = locationName
+                        locationTv.text = locationName
 
                         setWeatherCondition(weatherCondition, setTime(secondsOffset))
                         setTemperature(temperature)
@@ -98,26 +131,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun setTime(secondsOffset: Int): Int {
 
-        val time      = System.currentTimeMillis()
+        val time = System.currentTimeMillis()
         val localtime = (secondsOffset.times(1000)).plus(time)
 
-        val dateFormat       = SimpleDateFormat("EEEE, MMMM d")
-        dateFormat.timeZone  = TimeZone.getTimeZone("UTC")
+        val dateFormat = SimpleDateFormat("EEEE, MMMM d")
+        dateFormat.timeZone = TimeZone.getTimeZone("UTC")
 
-        val timeFormat       = SimpleDateFormat("HH:mm")
-        timeFormat.timeZone  = TimeZone.getTimeZone("UTC")
+        val timeFormat = SimpleDateFormat("HH:mm")
+        timeFormat.timeZone = TimeZone.getTimeZone("UTC")
 
-        val currentDate      = dateFormat.format(Date(localtime))
-        val currentTime      = timeFormat.format(Date(localtime))
+        val currentDate = dateFormat.format(Date(localtime))
+        val currentTime = timeFormat.format(Date(localtime))
 
-        dateTv.text          = currentDate
-        timeTv.text          = currentTime
+        dateTv.text = currentDate
+        timeTv.text = currentTime
 
-        val subString        = currentTime.subSequence(0,2)
-        val timeCheck        = Integer.parseInt(subString as String)
+        val subString = currentTime.subSequence(0, 2)
+        val timeCheck = Integer.parseInt(subString as String)
 
-        val background       = if (isNightTime(timeCheck))
-        {
+        val background = if (isNightTime(timeCheck)) {
             R.drawable.nightbackground
         } else {
             R.drawable.daybackground
@@ -127,11 +159,11 @@ class MainActivity : AppCompatActivity() {
         return timeCheck
     }
 
-    private fun setWeatherCondition (weather: String, timeCheck: Int) {
+    private fun setWeatherCondition(weather: String, timeCheck: Int) {
 
         val condition = when (weather) {
 
-            "Clear"   -> {
+            "Clear" -> {
 
                 if (isNightTime(timeCheck)) {
                     Pair(R.drawable.ic_moon, "Clear")
@@ -140,11 +172,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            "Clouds"  -> Pair(R.drawable.ic_clouds, "Cloudy")
+            "Clouds" -> Pair(R.drawable.ic_clouds, "Cloudy")
 
-            "Rain"    -> Pair (R.drawable.ic_rain, "Rainy")
+            "Rain" -> Pair(R.drawable.ic_rain, "Rainy")
 
-             else     -> Pair (R.drawable.ic_question, "")
+            else -> Pair(R.drawable.ic_question, "")
         }
 
         conditionImageView.setImageResource(condition.first)
@@ -152,12 +184,12 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    private fun setTemperature (tempInKelvin: String) {
+    private fun setTemperature(tempInKelvin: String) {
 
-        val tempConversion  = tempInKelvin.toDouble() - 273.15
+        val tempConversion = tempInKelvin.toDouble() - 273.15
 
-        val numberFormat    = DecimalFormat.getInstance()
-        numberFormat.maximumFractionDigits  = 0
+        val numberFormat = DecimalFormat.getInstance()
+        numberFormat.maximumFractionDigits = 0
 
         val tempCelsius = numberFormat.format(tempConversion) + "°"
 
@@ -166,13 +198,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun isNightTime(timeCheck: Int): Boolean {
 
-            if (timeCheck > 19 || timeCheck < 6) {
-                return true
+        if (timeCheck > 19 || timeCheck < 6) {
+            return true
         }
         return false
     }
 
-    private fun displayCities() {
+    private fun displayCities(allCitiesList: List<String>) {
+
 
         val alertBuilder: AlertDialog = AlertDialog.Builder(this).create()
         val layoutInflater = layoutInflater
@@ -181,8 +214,8 @@ class MainActivity : AppCompatActivity() {
 
         val listView = view.findViewById<ListView>(R.id.citiesListView)
 
-        val allCitiesAdapter     =
-            ArrayAdapter(this, android.R.layout.simple_list_item_1, cityStringList.value)
+        val allCitiesAdapter =
+            ArrayAdapter(this, android.R.layout.simple_list_item_1, allCitiesList)
 
         val popularCitiesAdapter =
             ArrayAdapter(this, android.R.layout.simple_list_item_1, popularCities.value)
@@ -190,17 +223,18 @@ class MainActivity : AppCompatActivity() {
         listView.adapter = popularCitiesAdapter
 
         view.findViewById<SearchView>(
-            R.id.searchView).setOnQueryTextListener( object: SearchView.OnQueryTextListener {
+            R.id.searchView
+        ).setOnQueryTextListener(object : SearchView.OnQueryTextListener {
 
 
             override fun onQueryTextChange(newText: String): Boolean {
 
-                    if (newText.isEmpty()) {
-                        listView.adapter = popularCitiesAdapter
-                    } else {
-                        listView.adapter = allCitiesAdapter
-                        allCitiesAdapter.filter.filter(newText)
-                    }
+                if (newText.isEmpty()) {
+                    listView.adapter = popularCitiesAdapter
+                } else {
+                    listView.adapter = allCitiesAdapter
+                    allCitiesAdapter.filter.filter(newText)
+                }
 
                 return true
             }
@@ -219,9 +253,4 @@ class MainActivity : AppCompatActivity() {
         alertBuilder.show()
     }
 
-    private fun readJson(): List<City> {
-        val json: String = this.resources.openRawResource(R.raw.currentcities).bufferedReader().use { it.readText() }
-        val cities = NonStrictJsonSerializer.serializer.parse(ListSerializer(City.serializer()), json)
-        return cities
-    }
 }
